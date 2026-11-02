@@ -302,3 +302,21 @@ body.sheet-open #toast { bottom: calc(var(--safe-b) + 16px); }
   #view { padding-top: 32px; }
 }
 .legend .lg-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- Éditeur de répétition ---------- */
+.field select {
+  flex: 1; min-width: 0; height: 48px; border: 0; background: none; outline: none; font-size: 17px; color: var(--accent);
+  text-align: right; text-align-last: right; -webkit-appearance: none; appearance: none; cursor: pointer; padding: 0;
+}
+.field select option { color: initial; }
+.rp-custom input { flex: 0 0 64px; text-align: center; background: var(--track); border-radius: 8px; height: 36px; }
+.rp-custom select { flex: 1; }
+.repeat [hidden] { display: none !important; }
+.rp-week { display: flex; justify-content: space-between; gap: 4px; padding: 10px 16px; position: relative; }
+.rp-week::after { content: ""; position: absolute; left: 16px; right: 0; bottom: 0; height: 1px; background: var(--line); }
+.rp-week button { width: 40px; height: 40px; min-width: 0; border-radius: 50%; background: var(--track); font-size: 15px; font-weight: 600; text-align: center; }
+.rp-week button.on { background: var(--accent); color: var(--on-accent); }
+.rp-preview { margin: 0; padding: 12px 16px 14px; font-size: 14px; color: var(--muted); line-height: 1.5; }
+.rp-preview b { color: var(--text); font-weight: 600; }
+.btn.soft svg { width: 16px; height: 16px; }
+.repeat .field > span { width: auto; white-space: nowrap; }

@@ -32,8 +32,8 @@ test('forecast : reste à dépenser déduit charges fixes à venir et épargne d
   const state = {
     transactions: [T('2026-11-01', 200000, 'income', 'sal', { recurringId: 'r1' }), T('2026-11-02', 3000)],
     recurring: [
-      { id: 'r1', type: 'income', amount: 200000, day: 1, start: '2026-01', categoryId: 'sal' },
-      { id: 'r2', type: 'expense', amount: 70000, day: 5, start: '2026-01', categoryId: 'log' },
+      { id: 'r1', type: 'income', amount: 200000, startDate: '2026-01-01', unit: 'month', every: 1, lastDate: '2026-11-01', categoryId: 'sal' },
+      { id: 'r2', type: 'expense', amount: 70000, startDate: '2026-01-05', unit: 'month', every: 1, lastDate: '2026-10-05', categoryId: 'log' },
     ],
     goals: [{ contributions: [{ date: '2026-11-02', amount: 10000 }, { date: '2026-01-01', amount: 50000, initial: true }] }],
   };
@@ -66,21 +66,27 @@ test('forecast d’un mois passé : pas de jours restants', () => {
   assert.equal(f.projectedExpense, 500);
 });
 
-test('pendingRecurring rattrape les mois manqués sans dupliquer', () => {
+test('pendingRecurring rattrape les passages manqués sans dupliquer', () => {
   let n = 0;
   const id = () => `id${n++}`;
-  const recurring = [{ id: 'r', type: 'expense', amount: 1000, day: 31, start: '2026-01', lastGenerated: '2026-01', categoryId: 'c' }];
-  const { transactions, lastGenerated } = pendingRecurring(recurring, '2026-04-15', id);
+  const r = { id: 'r', type: 'expense', amount: 1000, startDate: '2026-01-31', unit: 'month', every: 1, day: 31, lastDate: '2026-01-31', categoryId: 'c' };
+  const { transactions, lastDate } = pendingRecurring([r], '2026-04-15', id);
   // février (28), mars (31) ; avril 30 pas encore passé
   assert.deepEqual(transactions.map((t) => t.date), ['2026-02-28', '2026-03-31']);
-  assert.equal(lastGenerated.r, '2026-03');
-  const again = pendingRecurring([{ ...recurring[0], lastGenerated: '2026-03' }], '2026-04-15', id);
-  assert.equal(again.transactions.length, 0);
+  assert.equal(lastDate.r, '2026-03-31');
+  assert.equal(pendingRecurring([{ ...r, lastDate: '2026-03-31' }], '2026-04-15', id).transactions.length, 0);
 });
 
-test('pendingRecurring ignore les récurrences désactivées', () => {
-  const r = [{ id: 'r', type: 'expense', amount: 1, day: 1, start: '2026-01', active: false, categoryId: 'c' }];
-  assert.equal(pendingRecurring(r, '2026-05-01', () => 'x').transactions.length, 0);
+test('pendingRecurring : toutes les 2 semaines, et récurrences désactivées ignorées', () => {
+  const r = { id: 'r', type: 'income', amount: 5000, startDate: '2026-10-02', unit: 'week', every: 2, weekdays: [5], lastDate: '2026-10-02', categoryId: 'c' };
+  assert.deepEqual(pendingRecurring([r], '2026-11-02', () => 'x').transactions.map((t) => t.date), ['2026-10-16', '2026-10-30']);
+  assert.equal(pendingRecurring([{ ...r, active: false }], '2026-11-02', () => 'x').transactions.length, 0);
+});
+
+test('forecast compte chaque passage hebdomadaire à venir dans le mois', () => {
+  const r = { id: 'r', type: 'expense', amount: 1000, startDate: '2026-11-02', unit: 'week', every: 1, weekdays: [1], lastDate: '2026-11-02', categoryId: 'c' };
+  const f = forecast({ transactions: [], recurring: [r] }, '2026-11', '2026-11-02');
+  assert.equal(f.fixedOut, 4000); // lundis 9, 16, 23 et 30 novembre
 });
 
 test('goalPlan calcule l’effort mensuel', () => {

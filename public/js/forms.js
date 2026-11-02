@@ -4,6 +4,8 @@ import { eur, esc, centsToInput } from './format.js';
 import { openSheet, closeSheet, toast, confirmSheet, icons } from './ui.js';
 import { newId, COLORS } from './store.js';
 import { exportJson, exportCsv, importJson } from './backup.js';
+import { repeatEditorHtml, bindRepeatEditor } from './repeat-editor.js';
+import { describeRule, nextDates, dateFr, schedule } from './recurrence.js';
 
 const EMOJIS = ['🛒', '🍔', '☕', '🚗', '⛽', '🚆', '🏠', '💡', '📱', '🎮', '🎬', '🎵', '🛍️', '👕', '💊', '🏋️', '✈️', '🎁', '🐶', '📚', '💼', '💶', '🤝', '📦', '🎯', '🏖️', '🚘', '💻', '🆘', '💍'];
 
@@ -55,15 +57,18 @@ export function txSheet(ctx, id, preset = {}) {
       <div class="field-group">
         <label class="field"><span>Note</span><input name="note" maxlength="60" placeholder="Facultatif" value="${esc(tx?.note || '')}" autocomplete="off"></label>
         <label class="field"><span>Date</span><input name="date" type="date" required value="${esc(tx?.date || defaultDate)}"></label>
-        ${tx ? '' : toggle('repeat', 'Répéter chaque mois', false, 'Loyer, salaire, abonnement…')}
       </div>
+      ${tx ? '' : repeatEditorHtml(null)}
       <button class="btn primary block" type="submit">${tx ? 'Enregistrer' : 'Ajouter'}</button>
-      ${tx ? `${tx.recurringId ? `<p class="tiny center">${icons.repeat} Créée par une récurrence (modifiable dans Réglages)</p>` : ''}
+      ${tx ? `${tx.recurringId && state.recurring.some((r) => r.id === tx.recurringId) ? `<button class="btn soft block" type="button" data-open-rec>${icons.repeat} Modifier la répétition</button>` : ''}
         <button class="btn danger-text block" type="button" data-delete>Supprimer</button>` : ''}
     </form>`,
     onMount(sheet) {
       const form = sheet.querySelector('form');
       if (!tx) form.amount.focus();
+      const repeat = tx ? null : bindRepeatEditor(sheet.querySelector('.repeat'), { rule: null, getStart: () => form.date.value || ctx.ui.today });
+      if (repeat) form.date.addEventListener('change', repeat.refresh);
+      sheet.querySelector('[data-open-rec]')?.addEventListener('click', () => recurringSheet(ctx, tx.recurringId));
       form.amount.addEventListener('input', () => form.amount.classList.remove('invalid'));
       sheet.querySelector('.segmented').addEventListener('click', (e) => {
         const b = e.target.closest('[data-type]');
@@ -92,22 +97,31 @@ export function txSheet(ctx, id, preset = {}) {
         if (!cat) return toast('Choisis une catégorie');
         const date = form.date.value || ctx.ui.today;
         const note = form.note.value.trim();
+        const rep = repeat ? repeat.read() : { rule: null };
+        if (rep.error) return toast(esc(rep.error));
         ctx.store.update((s) => {
           if (tx) {
             Object.assign(s.transactions.find((t) => t.id === tx.id), { type, amount, categoryId: cat, date, note });
             return;
           }
           const t = { id: newId(), type, amount, categoryId: cat, date, note, createdAt: Date.now() };
-          if (form.repeat?.checked) {
-            const r = { id: newId(), type, amount, categoryId: cat, day: Number(date.slice(8, 10)), note, start: monthOf(date), lastGenerated: monthOf(date), active: true };
+          if (rep.rule) {
+            // La date choisie sert de départ. Si elle tombe sur un passage de la règle, l'opération
+            // saisie est ce premier passage ; sinon (ex. saisie un lundi pour « chaque vendredi »),
+            // rien n'est créé maintenant : chaque passage arrivera à sa date, et « N fois » reste exact.
+            const isFirst = schedule(rep.rule).next().value === date;
+            const r = { id: newId(), type, amount, categoryId: cat, note, active: true, ...rep.rule, lastDate: isFirst ? date : null };
             s.recurring.push(r);
+            if (!isFirst) return;
             t.recurringId = r.id;
           }
           s.transactions.push(t);
         });
-        if (form.repeat?.checked) ctx.store.runRecurring(ctx.ui.today);
+        if (rep.rule) ctx.store.runRecurring(ctx.ui.today);
         closeSheet();
-        toast(tx ? 'Opération modifiée' : `${type === 'income' ? 'Revenu' : 'Dépense'} de ${eur(amount)} ajouté${type === 'income' ? '' : 'e'}`);
+        const first = rep.rule ? schedule(rep.rule).next().value : null;
+        if (rep.rule && first !== date) toast(`Répétition créée, premier passage le ${dateFr(first)}`);
+        else toast(tx ? 'Opération modifiée' : `${type === 'income' ? 'Revenu' : 'Dépense'} de ${eur(amount)} ajouté${type === 'income' ? '' : 'e'}${rep.rule ? ', répété' : ''}`);
       });
       sheet.querySelector('[data-delete]')?.addEventListener('click', () => {
         const before = ctx.store.get();
@@ -314,22 +328,30 @@ export function recurringSheet(ctx, id) {
   const r = state.recurring.find((x) => x.id === id);
   if (!r) return;
   let cat = r.categoryId;
+  const next = r.active === false ? [] : nextDates(r, r.lastDate && r.lastDate > ctx.ui.today ? r.lastDate : ctx.ui.today, 1);
   openSheet({
-    title: 'Récurrence',
+    title: r.type === 'income' ? 'Revenu récurrent' : 'Dépense récurrente',
     body: `<form class="form" novalidate>
       ${amountField(centsToInput(r.amount))}
       <div class="chips">${catChips(state, r.type, cat)}</div>
       <div class="field-group">
         <label class="field"><span>Note</span><input name="note" maxlength="60" value="${esc(r.note || '')}" placeholder="Facultatif" autocomplete="off"></label>
-        <label class="field"><span>Jour du mois</span><input name="day" type="number" inputmode="numeric" min="1" max="31" value="${r.day}"></label>
-        ${toggle('active', 'Active', r.active !== false, 'Désactivée, elle ne crée plus d’opération')}
+        <label class="field"><span>À partir du</span><input name="date" type="date" required value="${esc(r.startDate)}"></label>
       </div>
-      <p class="tiny center">Les changements valent pour les prochains mois ; les opérations déjà créées ne bougent pas.</p>
+      ${repeatEditorHtml(r, { allowNone: false })}
+      <div class="field-group">${toggle('active', 'Active', r.active !== false, 'Désactivée, elle ne crée plus d’opération')}</div>
+      <p class="tiny center">${next.length ? `Prochain passage : <b>${dateFr(next[0])}</b>. ` : ''}Les changements valent pour la suite ; les opérations déjà créées ne bougent pas.</p>
       <button class="btn primary block" type="submit">Enregistrer</button>
       <button class="btn danger-text block" type="button" data-delete>Supprimer la récurrence</button>
     </form>`,
     onMount(sheet) {
       const form = sheet.querySelector('form');
+      const repeat = bindRepeatEditor(sheet.querySelector('.repeat'), {
+        rule: r,
+        getStart: () => form.date.value || r.startDate,
+        previewAfter: () => (r.lastDate && r.lastDate > ctx.ui.today ? r.lastDate : ctx.ui.today),
+      });
+      form.date.addEventListener('change', repeat.refresh);
       sheet.querySelector('.chips').addEventListener('click', (e) => {
         const b = e.target.closest('[data-cat]');
         if (!b) return;
@@ -340,10 +362,13 @@ export function recurringSheet(ctx, id) {
         e.preventDefault();
         const amount = readAmount(form);
         if (!amount) return;
-        const day = Number(form.day.value);
-        if (!Number.isInteger(day) || day < 1 || day > 31) return toast('Jour entre 1 et 31');
+        const rep = repeat.read();
+        if (rep.error) return toast(esc(rep.error));
         ctx.store.update((s) => {
-          Object.assign(s.recurring.find((x) => x.id === r.id), { amount, categoryId: cat, note: form.note.value.trim(), day, active: form.active.checked });
+          const target = s.recurring.find((x) => x.id === r.id);
+          // On remplace la règle entière (les anciens champs, ex. weekdays, ne doivent pas rester).
+          for (const k of ['unit', 'every', 'weekdays', 'day', 'monthMode', 'end']) delete target[k];
+          Object.assign(target, { amount, categoryId: cat, note: form.note.value.trim(), active: form.active.checked, ...rep.rule });
         });
         ctx.store.runRecurring(ctx.ui.today);
         closeSheet();
@@ -366,7 +391,7 @@ export function recurringSheet(ctx, id) {
 export function settingsSheet(ctx) {
   const state = ctx.store.get();
   const cats = Object.fromEntries(state.categories.map((c) => [c.id, c]));
-  const recurring = [...state.recurring].sort((a, b) => a.day - b.day);
+  const recurring = [...state.recurring].sort((a, b) => (b.type === 'income') - (a.type === 'income') || b.amount - a.amount);
   const catRow = (c) => `<button class="row" data-go="cat" data-id="${esc(c.id)}">
     <span class="emoji" style="--c:${esc(c.color)}">${esc(c.emoji)}</span>
     <span class="row-main"><span class="row-title">${esc(c.name)}</span>${c.budget ? `<span class="row-sub">Budget ${eur(c.budget, { round: true })}/mois</span>` : ''}</span>
@@ -376,12 +401,12 @@ export function settingsSheet(ctx) {
     title: 'Réglages',
     wide: true,
     body: `
-      <p class="label">Récurrences (chaque mois)</p>
+      <p class="label">Récurrences</p>
       <div class="card list flat">${recurring.length ? recurring.map((r) => `<button class="row" data-go="rec" data-id="${esc(r.id)}">
         <span class="emoji" style="--c:${esc(cats[r.categoryId]?.color)}">${esc(cats[r.categoryId]?.emoji || '•')}</span>
-        <span class="row-main"><span class="row-title">${esc(r.note || cats[r.categoryId]?.name || '')}</span><span class="row-sub">le ${r.day} du mois${r.active === false ? ' · désactivée' : ''}</span></span>
+        <span class="row-main"><span class="row-title">${esc(r.note || cats[r.categoryId]?.name || '')}</span><span class="row-sub">${esc(describeRule(r))}${r.active === false ? ' · désactivée' : ''}</span></span>
         <span class="amount ${r.type}">${r.type === 'income' ? '+' : '−'}${eur(r.amount)}</span></button>`).join('')
-    : '<p class="muted pad">Aucune. Coche « Répéter chaque mois » en ajoutant une opération.</p>'}</div>
+    : '<p class="muted pad">Aucune. Choisis « Répéter » en ajoutant une opération.</p>'}</div>
       <p class="label">Catégories de dépenses</p>
       <div class="card list flat">${state.categories.filter((c) => c.type === 'expense').map(catRow).join('')}
         <button class="row add" data-go="new-cat" data-type="expense"><span class="row-main"><span class="row-title accent">Ajouter une catégorie</span></span></button></div>

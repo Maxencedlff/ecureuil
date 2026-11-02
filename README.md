@@ -9,7 +9,7 @@ S'installe sur l'écran d'accueil (iPhone et Android) et marche hors ligne.
 - **Fin de mois prévue** : mélange du rythme du mois en cours et de la moyenne des 3 mois précédents (le poids du mois en cours grandit au fil des jours ; sans historique, pas de prévision avant le 7).
 - **Budgets** par catégorie (alerte à 80 %, dépassement), **reste à attribuer** = revenus − budgets prévus.
 - **Objectifs** : montant à mettre de côté par mois pour tenir l'échéance.
-- **Récurrences** : créées automatiquement chaque mois à l'ouverture de l'appli (rattrapage des mois manqués, jamais en double).
+- **Récurrences** (revenus et dépenses) : chaque jour, du lundi au vendredi, chaque semaine (jours au choix), toutes les 2 ou 4 semaines, chaque mois (jour fixe ou dernier jour), tous les 2 mois, trimestre, 6 mois, chaque année, ou intervalle libre (tous les N jours, semaines, mois, ans) ; fin jamais, à une date ou après N fois. Créées automatiquement à l’ouverture de l’appli (rattrapage des passages manqués, jamais en double). Règles dans `recurrence.js`.
 
 ## Choix techniques
 - **Sans framework ni build** : modules ES servis tels quels (`public/js`). L'appli est petite ; pas de dépendance = rien à mettre à jour.

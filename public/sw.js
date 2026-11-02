@@ -1,11 +1,11 @@
 // Service worker : l'appli s'ouvre même sans réseau.
 // Pages : réseau d'abord (le verrou par code reste vérifié en ligne), copie locale hors ligne.
 // Fichiers (JS, CSS, icônes) : copie locale tout de suite, mise à jour en arrière-plan.
-const CACHE = 'ecureuil-v1';
+const CACHE = 'ecureuil-v2';
 const SHELL = [
   '/', '/styles.css', '/manifest.webmanifest', '/icons/icon.svg', '/icons/icon-192.png',
   '/js/app.js', '/js/calc.js', '/js/store.js', '/js/views.js', '/js/forms.js', '/js/ui.js',
-  '/js/charts.js', '/js/format.js', '/js/backup.js',
+  '/js/charts.js', '/js/format.js', '/js/backup.js', '/js/recurrence.js', '/js/repeat-editor.js',
 ];
 
 self.addEventListener('install', (e) => {

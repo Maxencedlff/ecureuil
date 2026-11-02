@@ -1,8 +1,9 @@
 // État de l'application et persistance locale (localStorage, sur l'appareil uniquement).
 import { pendingRecurring } from './calc.js';
+import { isValidRule, migrateV1 } from './recurrence.js';
 
 export const STORAGE_KEY = 'ecureuil:v1';
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2; // 2 : récurrences à fréquence libre (1 : chaque mois seulement)
 
 export const COLORS = ['#FF9F0A', '#FF453A', '#30D158', '#0A84FF', '#BF5AF2', '#FF375F', '#64D2FF', '#FFD60A', '#AC8E68', '#8E8E93'];
 
@@ -39,7 +40,7 @@ const isDate = (x) => typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x);
  * ou lève une erreur lisible. Les entrées invalides sont écartées plutôt que de casser l'appli.
  */
 export function validateState(raw) {
-  if (!isObj(raw) || raw.version !== SCHEMA_VERSION) throw new Error('Fichier non reconnu (pas une sauvegarde Écureuil).');
+  if (!isObj(raw) || ![1, SCHEMA_VERSION].includes(raw.version)) throw new Error('Fichier non reconnu (pas une sauvegarde Écureuil).');
   const arr = (x) => (Array.isArray(x) ? x : []);
   const categories = arr(raw.categories).filter(
     (c) => isObj(c) && typeof c.id === 'string' && typeof c.name === 'string' && ['expense', 'income'].includes(c.type),
@@ -49,10 +50,10 @@ export function validateState(raw) {
   const transactions = arr(raw.transactions).filter(
     (t) => isObj(t) && typeof t.id === 'string' && isCents(t.amount) && isDate(t.date) && catIds.has(t.categoryId),
   );
-  const recurring = arr(raw.recurring).filter(
-    (r) => isObj(r) && typeof r.id === 'string' && isCents(r.amount) && catIds.has(r.categoryId)
-      && Number.isInteger(r.day) && r.day >= 1 && r.day <= 31 && /^\d{4}-\d{2}$/.test(r.start),
-  );
+  const recurring = arr(raw.recurring)
+    .map((r) => (isObj(r) && raw.version === 1 && Number.isInteger(r.day) && r.day >= 1 && r.day <= 31 && /^\d{4}-\d{2}$/.test(r.start) ? migrateV1(r) : r))
+    .filter((r) => isObj(r) && typeof r.id === 'string' && isCents(r.amount) && catIds.has(r.categoryId) && isValidRule(r))
+    .map((r) => ({ ...r, lastDate: isDate(r.lastDate) ? r.lastDate : null }));
   const goals = arr(raw.goals).filter((g) => isObj(g) && typeof g.id === 'string' && isCents(g.target))
     .map((g) => ({ ...g, contributions: arr(g.contributions).filter((c) => isObj(c) && Number.isSafeInteger(c.amount) && isDate(c.date)) }));
   return { version: SCHEMA_VERSION, categories, transactions, recurring, goals };
@@ -100,11 +101,11 @@ export function createStore(storage = globalThis.localStorage) {
     },
     /** Ajoute les opérations récurrentes arrivées à échéance (au lancement et au retour dans l'appli). */
     runRecurring(today) {
-      const { transactions, lastGenerated } = pendingRecurring(state.recurring, today, newId);
-      if (!transactions.length && !Object.keys(lastGenerated).length) return 0;
+      const { transactions, lastDate } = pendingRecurring(state.recurring, today, newId);
+      if (!transactions.length) return 0;
       this.update((s) => {
         s.transactions.push(...transactions);
-        for (const r of s.recurring) if (r.id in lastGenerated) r.lastGenerated = lastGenerated[r.id];
+        for (const r of s.recurring) if (r.id in lastDate) r.lastDate = lastDate[r.id];
       });
       return transactions.length;
     },

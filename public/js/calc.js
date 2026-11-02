@@ -1,5 +1,6 @@
 // Calculs purs (aucun accès au DOM ni au stockage) : testés dans tests/calc.test.js.
 // Tous les montants sont des entiers en centimes, pour éviter les erreurs d'arrondi des flottants.
+import { datesBetween } from './recurrence.js';
 
 /** "2026-11-02" -> "2026-11" */
 export const monthOf = (isoDate) => isoDate.slice(0, 7);
@@ -68,11 +69,20 @@ export function budgetStatus(budget, spent) {
   };
 }
 
-/** Récurrences d'un type pas encore passées dans le mois (à partir de demain). */
+/**
+ * Passages à venir dans le mois courant (après aujourd'hui, pas encore créés) pour un type.
+ * Une récurrence hebdomadaire peut tomber plusieurs fois : chaque passage compte.
+ */
 export function upcomingRecurring(recurring, ym, today, type) {
   if (monthOf(today) !== ym) return [];
-  const day = Number(today.slice(8, 10));
-  return recurring.filter((r) => r.type === type && r.active !== false && r.start <= ym && clampDay(r.day, ym) > day);
+  const monthEnd = `${ym}-${String(daysInMonth(ym)).padStart(2, '0')}`;
+  const out = [];
+  for (const r of recurring) {
+    if (r.type !== type || r.active === false) continue;
+    const after = r.lastDate && r.lastDate > today ? r.lastDate : today;
+    for (const date of datesBetween(r, after, monthEnd)) out.push({ ...r, date });
+  }
+  return out;
 }
 
 /**
@@ -127,8 +137,6 @@ export function forecast({ transactions, recurring, goals = [] }, ym, today) {
   };
 }
 
-const clampDay = (day, ym) => Math.min(day, daysInMonth(ym));
-
 /** Dépenses variables (hors récurrences) moyennes des n mois précédents qui ont des opérations, ou null. */
 export function averageVariable(transactions, ym, n) {
   const totals = [];
@@ -149,36 +157,22 @@ export function savedInMonth(goals, ym) {
 }
 
 /**
- * Crée les opérations des récurrences (loyer, salaire, abonnements) jusqu'à aujourd'hui.
- * Chaque récurrence mémorise le dernier mois généré : supprimer une opération générée
- * ne la fait donc pas réapparaître. Renvoie les nouvelles opérations, sans rien modifier.
+ * Crée les opérations des récurrences arrivées à échéance jusqu'à aujourd'hui (rattrape les jours manqués).
+ * Chaque récurrence mémorise la date du dernier passage créé (lastDate) : supprimer une opération
+ * générée ne la fait donc pas réapparaître. Renvoie les nouvelles opérations, sans rien modifier.
  */
 export function pendingRecurring(recurring, today, makeId) {
   const out = [];
   const updates = {};
-  const ymNow = monthOf(today);
   for (const r of recurring) {
     if (r.active === false) continue;
-    let ym = r.lastGenerated ? addMonths(r.lastGenerated, 1) : r.start;
-    let last = r.lastGenerated || null;
-    while (ym <= ymNow) {
-      const date = `${ym}-${String(clampDay(r.day, ym)).padStart(2, '0')}`;
-      if (date > today) break;
-      out.push({
-        id: makeId(),
-        type: r.type,
-        amount: r.amount,
-        categoryId: r.categoryId,
-        date,
-        note: r.note || '',
-        recurringId: r.id,
-      });
-      last = ym;
-      ym = addMonths(ym, 1);
+    const dates = datesBetween(r, r.lastDate || null, today);
+    for (const date of dates) {
+      out.push({ id: makeId(), type: r.type, amount: r.amount, categoryId: r.categoryId, date, note: r.note || '', recurringId: r.id });
     }
-    if (last !== (r.lastGenerated || null)) updates[r.id] = last;
+    if (dates.length) updates[r.id] = dates[dates.length - 1];
   }
-  return { transactions: out, lastGenerated: updates };
+  return { transactions: out, lastDate: updates };
 }
 
 /** Plan d'un objectif d'épargne : reste, mois restants, montant à mettre de côté par mois. */
