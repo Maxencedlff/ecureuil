@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Écureuil</title>
+  <meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Écureuil">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="login-page">
+  <main class="login">
+    <img src="/icons/icon.svg" alt="" width="88" height="88" class="login-icon">
+    <h1>Écureuil</h1>
+    <p class="muted">Entre le code pour ouvrir ton budget.</p>
+    <form id="login" novalidate>
+      <label class="sr" for="code">Code d'entrée</label>
+      <input id="code" name="code" type="password" autocomplete="current-password" autocapitalize="none" autocorrect="off"
+        spellcheck="false" placeholder="Code d'entrée" required enterkeyhint="go">
+      <button class="btn primary block" type="submit">Entrer</button>
+      <p id="error" class="error" role="alert"></p>
+    </form>
+    <p class="tiny hint">Sur iPhone : Partager, puis « Sur l'écran d'accueil ».<br>Sur Android : menu ⋮, puis « Ajouter à l'écran d'accueil ».</p>
+  </main>
+  <script type="module" src="/js/login.js"></script>
+</body>
+</html>

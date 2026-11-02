@@ -1,0 +1,11 @@
+{
+  "name": "ecureuil",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "PWA de gestion de budget : catégories, budgets, objectifs d'épargne, verrou par code.",
+  "scripts": {
+    "test": "node --test tests/"
+  },
+  "engines": { "node": ">=20" }
+}
